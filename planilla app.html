@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App de Reportes (Offline/Online)</title>
+    <!-- 1. Tailwind CSS para estilos rápidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Librería de Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- 3. Librería de Almacenamiento Offline (localForage) -->
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    <!-- 4. Librería de Compresión de Imágenes -->
+    <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
+    
+    <style>
+        /* Estilo para el indicador de estado */
+        .status-indicator {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .online { background-color: #2ecc71; }
+        .offline { background-color: #e74c3c; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+    <div class="container mx-auto max-w-lg p-5">
+        
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-gray-800">PLANILLA CONTROL DE CALIDAD RECEPCION PEONÍAS</h1>
+            <p class="text-gray-600">Complete el formulario para generar su documento.</p>
+            <div class="mt-4 flex items-center justify-center">
+                <span id="status-light" class="status-indicator offline"></span>
+                <span id="status-text" class="font-medium text-gray-700">Offline</span>
+            </div>
+        </header>
+
+        <!-- Mensajes de estado para el usuario -->
+        <div id="message-box" class="hidden p-4 rounded-md mb-4 text-white"></div>
+
+        <!-- Formulario Principal -->
+        <form id="report-form" class="bg-white p-6 rounded-lg shadow-md">
+            
+            <!-- Campo 1: Fecha (Autocompletado) -->
+            <div class="mb-6">
+                <label for="fecha-input" class="block text-sm font-medium text-gray-700 mb-1">FECHA DE REPORTE</label>
+                <input type="text" id="fecha-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" readonly>
+            </div>
+
+            <!-- Campo 2: Productor (Autocompletar) -->
+            <div class="mb-6">
+                <label for="productor-input" class="block text-sm font-medium text-gray-700 mb-1">PRODUCTOR</label>
+                <input list="productor-list" id="productor-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Escriba o seleccione un productor...">
+                <datalist id="productor-list">
+                    <!-- Reemplaza estas opciones con tus productores reales -->
+                    <option value="Productor A"></option>
+                    <option value="Productor B"></option>
+                    <option value="Productor C"></option>
+                </datalist>
+            </div>
+
+            <!-- Campo 3: Variedad de Peonía (Autocompletar) -->
+            <div class="mb-6">
+                <label for="variedad-input" class="block text-sm font-medium text-gray-700 mb-1">VARIEDAD</label>
+                <input list="variedad-list" id="variedad-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Escriba o seleccione una variedad...">
+                <datalist id="variedad-list">
+                    <!-- Reemplaza estas opciones con tus variedades reales -->
+                    <option value="Sarah Bernhardt"></option>
+                    <option value="Coral Charm"></option>
+                    <option value="Red Charm"></option>
+                    <option value="Duchesse de Nemours"></option>
+                </datalist>
+            </div>
+
+            <!-- Campo 4: Responsable (Autocompletar) -->
+            <div class="mb-6">
+                <label for="responsable-input" class="block text-sm font-medium text-gray-700 mb-1">RESPONSABLE</label>
+                <input list="responsable-list" id="responsable-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Escriba o seleccione un responsable...">
+                <datalist id="responsable-list">
+                    <!-- Reemplaza estas opciones con tus responsables reales -->
+                    <option value="Juan Pérez"></option>
+                    <option value="María González"></option>
+                    <option value="Pedro Rojas"></option>
+                </datalist>
+            </div>
+
+            <!-- Campo 5: Foto Termómetro Infrarrojo -->
+            <div class="mb-6">
+                <label for="photo-infrarrojo" class="block text-sm font-medium text-gray-700 mb-1">FOTO TERMÓMETRO INFRARROJO CAMIÓN</label>
+                <p class="text-xs text-gray-500 mb-2">Presiona para activar la cámara.</p>
+                <input type="file" id="photo-infrarrojo" data-key="infrarrojo" accept="image/*" capture="camera" class="photo-input w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                    file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100">
+                <img id="preview-infrarrojo" src="" alt="Vista previa" class="photo-preview hidden w-full rounded-md mt-4 shadow-sm"/>
+            </div>
+
+            <!-- Campo 6: Foto Termómetro Pincho -->
+            <div class="mb-6">
+                <label for="photo-pincho" class="block text-sm font-medium text-gray-700 mb-1">FOTO TERMÓMETRO DE PINCHAR EN VARA</label>
+                <p class="text-xs text-gray-500 mb-2">Presiona para activar la cámara.</p>
+                <input type="file" id="photo-pincho" data-key="pincho" accept="image/*" capture="camera" class="photo-input w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                    file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100">
+                <img id="preview-pincho" src="" alt="Vista previa" class="photo-preview hidden w-full rounded-md mt-4 shadow-sm"/>
+            </div>
+
+            <!-- Campo 7: Foto Botones -->
+            <div class="mb-6">
+                <label for="photo-botones" class="block text-sm font-medium text-gray-700 mb-1">FOTO BOTONES</label>
+                <p class="text-xs text-gray-500 mb-2">Presiona para activar la cámara.</p>
+                <input type="file" id="photo-botones" data-key="botones" accept="image/*" capture="camera" class="photo-input w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                    file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100">
+                <img id="preview-botones" src="" alt="Vista previa" class="photo-preview hidden w-full rounded-md mt-4 shadow-sm"/>
+            </div>
+
+            <!-- Campo 8: Foto Medida Botón -->
+            <div class="mb-6">
+                <label for="photo-medida-boton" class="block text-sm font-medium text-gray-700 mb-1">FOTO MEDIDA BOTÓN</label>
+                <p class="text-xs text-gray-500 mb-2">Presiona para activar la cámara.</p>
+                <input type="file" id="photo-medida-boton" data-key="medida_boton" accept="image/*" capture="camera" class="photo-input w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                    file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100">
+                <img id="preview-medida_boton" src="" alt="Vista previa" class="photo-preview hidden w-full rounded-md mt-4 shadow-sm"/>
+            </div>
+
+            <!-- Campo 9: Foto Medida Tallo -->
+            <div class="mb-6">
+                <label for="photo-medida-tallo" class="block text-sm font-medium text-gray-700 mb-1">FOTO MEDIDA TALLO</label>
+                <p class="text-xs text-gray-500 mb-2">Presiona para activar la cámara.</p>
+                <input type="file" id="photo-medida-tallo" data-key="medida_tallo" accept="image/*" capture="camera" class="photo-input w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                    file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100">
+                <img id="preview-medida_tallo" src="" alt="Vista previa" class="photo-preview hidden w-full rounded-md mt-4 shadow-sm"/>
+            </div>
+
+            <!-- Campo 10: Observación (Movido al final) -->
+            <div class="mb-6">
+                <label for="observacion-input" class="block text-sm font-medium text-gray-700 mb-1">OBSERVACIÓN</label>
+                <textarea id="observacion-input" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Añade tus observaciones aquí..."></textarea>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button type="button" id="save-offline-btn" class="w-full bg-gray-600 text-white py-2 px-4 rounded-md font-medium hover:bg-gray-700 transition duration-300">
+                    Guardar Borrador (Offline)
+                </button>
+                <button type="button" id="sync-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700 transition duration-300 disabled:bg-gray-400" disabled>
+                    Sincronizar y Generar
+                </button>
+            </div>
+            
+        </form>
+
+        <!-- Sección de Borradores Guardados -->
+        <div class="mt-8">
+            <h2 class="text-xl font-semibold text-gray-700 mb-3">Borradores Pendientes</h2>
+            <div id="drafts-list" class="text-gray-600 text-sm">
+                <p id="no-drafts" class="italic">No hay borradores guardados.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // =================================================================
+        // 1. CONFIGURACIÓN DE SUPABASE
+        // (Reemplaza con tus claves de INSTRUCCIONES.md)
+        // =================================================================
+        
+        const SUPABASE_URL = 'https://xefhodbmkltvargzhuhg.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlZmhvZGJta2x0dmFyZ3podWhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExODQ5MDUsImV4cCI6MjA3Njc2MDkwNX0.5U14dh6xRfQHXL7I03d4NDx0H7ubhdgWV6_EbK7SLF0';
+        
+        // Evitar errores si no se han configurado las claves
+        let supabase;
+        if (SUPABASE_URL !== 'TU_SUPABASE_URL') {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } else {
+            console.warn("Supabase no configurado. La app funcionará solo en modo offline.");
+        }
+
+        // =================================================================
+        // 2. REFERENCIAS A ELEMENTOS DEL DOM
+        // =================================================================
+        const statusLight = document.getElementById('status-light');
+        const statusText = document.getElementById('status-text');
+        const syncBtn = document.getElementById('sync-btn');
+        const saveOfflineBtn = document.getElementById('save-offline-btn');
+        const reportForm = document.getElementById('report-form');
+        
+        // Referencias a todos los inputs y vistas previas
+        const inputs = {
+            fecha: document.getElementById('fecha-input'),
+            productor: document.getElementById('productor-input'),
+            variedad: document.getElementById('variedad-input'),
+            responsable: document.getElementById('responsable-input'),
+            
+            infrarrojo: document.getElementById('photo-infrarrojo'),
+            pincho: document.getElementById('photo-pincho'),
+            botones: document.getElementById('photo-botones'),
+            medida_boton: document.getElementById('photo-medida-boton'),
+            medida_tallo: document.getElementById('photo-medida-tallo'),
+
+            observacion: document.getElementById('observacion-input')
+        };
+        
+        const previews = {
+            infrarrojo: document.getElementById('preview-infrarrojo'),
+            pincho: document.getElementById('preview-pincho'),
+            botones: document.getElementById('preview-botones'),
+            medida_boton: document.getElementById('preview-medida_boton'),
+            medida_tallo: document.getElementById('preview-medida_tallo'),
+        };
+
+        const draftsList = document.getElementById('drafts-list');
+        const noDraftsMsg = document.getElementById('no-drafts');
+        const messageBox = document.getElementById('message-box');
+
+        // Almacenamiento de archivos y sus versiones base64
+        let currentFiles = {};
+        let currentBase64 = {};
+        
+        // Claves requeridas para validación
+        const requiredTextKeys = ['fecha', 'productor', 'variedad', 'responsable'];
+        const requiredPhotoKeys = ['infrarrojo', 'pincho', 'botones', 'medida_boton', 'medida_tallo'];
+
+        // =================================================================
+        // 3. LÓGICA DE ESTADO (ONLINE/OFFLINE)
+        // =================================================================
+        
+        function updateOnlineStatus() {
+            const isOnline = navigator.onLine;
+            
+            if (isOnline) {
+                statusLight.classList.remove('offline');
+                statusLight.classList.add('online');
+                statusText.textContent = 'Online';
+                syncBtn.disabled = false;
+                showMessage("Estás online. Listo para sincronizar.", "success");
+                // Intentar sincronizar automáticamente al volver a estar online
+                syncOfflineDrafts();
+            } else {
+                statusLight.classList.remove('online');
+                statusLight.classList.add('offline');
+                statusText.textContent = 'Offline';
+                syncBtn.disabled = true;
+                showMessage("Estás offline. Los reportes se guardarán localmente.", "warning");
+            }
+        }
+
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+
+        // =================================================================
+        // 4. MANEJO DEL FORMULARIO Y COMPRESIÓN
+        // =================================================================
+
+        // Opciones de compresión
+        const compressionOptions = {
+            maxSizeMB: 1, // Comprimir si es > 1MB
+            maxWidthOrHeight: 1280, // Redimensionar a 1280px en el lado más largo
+            useWebWorker: true,
+            onProgress: (p) => { console.log(`Comprimiendo: ${p}%`); }
+        };
+        
+        // Asignar manejador de eventos a todos los inputs de fotos
+        document.querySelectorAll('.photo-input').forEach(input => {
+            input.addEventListener('change', (e) => handleImageChange(e));
+        });
+
+        async function handleImageChange(event) {
+            const input = event.target;
+            const key = input.dataset.key;
+            
+            if (!input.files || !input.files[0]) return;
+            
+            const file = input.files[0];
+            
+            showMessage(`Comprimiendo imagen '${key}'...`, "info");
+            
+            try {
+                // Comprimir la imagen
+                const compressedFile = await imageCompression(file, compressionOptions);
+                
+                console.log(`Imagen original '${key}': ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                console.log(`Imagen comprimida '${key}': ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
+                
+                // Guardar el archivo comprimido (File object)
+                currentFiles[key] = compressedFile; 
+                
+                // Generar Base64 para vista previa y almacenamiento offline
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    previews[key].src = event.target.result;
+                    previews[key].classList.remove('hidden');
+                    // Guardar la versión Base64 para el almacenamiento offline
+                    currentBase64[key] = event.target.result;
+                }
+                reader.readAsDataURL(compressedFile);
+
+                showMessage(`Imagen '${key}' procesada.`, "success");
+
+            } catch (error) {
+                console.error(`Error al comprimir '${key}':`, error);
+                showMessage(`Error al procesar la imagen: ${error.message}`, "error");
+                // Resetear el input si falla
+                input.value = null;
+                currentFiles[key] = null;
+                currentBase64[key] = null;
+                previews[key].classList.add('hidden');
+                previews[key].src = '';
+            }
+        }
+
+        // Guardar borrador (LocalStorage)
+        saveOfflineBtn.addEventListener('click', async () => {
+            
+            // --- Validación ---
+            let missing = [];
+            
+            // Validar campos de texto
+            for (const key of requiredTextKeys) {
+                if (!inputs[key].value) {
+                    missing.push(key);
+                }
+            }
+            
+            // Validar campos de foto
+            for (const key of requiredPhotoKeys) {
+                // Usamos currentBase64 como fuente de verdad, ya que
+                // se genera solo después de la compresión exitosa.
+                if (!currentBase64[key]) {
+                    missing.push(`foto_${key}`);
+                }
+            }
+
+            if (missing.length > 0) {
+                showMessage(`Faltan campos obligatorios: ${missing.join(', ')}`, "error");
+                return;
+            }
+            
+            // --- Preparar datos ---
+            const draftId = `draft_${Date.now()}`;
+            
+            // 1. Datos de texto
+            const textData = {
+                fecha: inputs.fecha.value,
+                productor_peonia: inputs.productor.value, // Corregido para coincidir con la DB
+                variedad_peonia: inputs.variedad.value, // Corregido para coincidir con la DB
+                responsable: inputs.responsable.value,
+                observacion: inputs.observacion.value,
+            };
+
+            // 2. Datos de fotos (con base64)
+            // Usamos currentBase64 y currentFiles (que ahora son comprimidos)
+            const photoData = {};
+            for (const key of requiredPhotoKeys) {
+                photoData[key] = {
+                    name: currentFiles[key].name,
+                    type: currentFiles[key].type,
+                    base64: currentBase64[key] // Guardamos el base64 comprimido
+                };
+            }
+            
+            // Crear el objeto 'draft'
+            const draft = {
+                id: draftId,
+                created_at: new Date().toISOString(),
+                text_data: textData,
+                photo_data: photoData
+            };
+
+            // --- Guardar en localForage (IndexedDB) ---
+            try {
+                const drafts = await getOfflineDrafts();
+                drafts.push(draft);
+                await localforage.setItem('offlineDrafts', drafts);
+                
+                showMessage("Borrador guardado localmente.", "success");
+                clearForm();
+                await updateDraftsList();
+            } catch (error) {
+                console.error("Error al guardar en localForage:", error);
+                showMessage(`Error al guardar borrador: ${error.message}`, "error");
+            }
+        });
+
+        // =================================================================
+        // 5. LÓGICA DE SINCRONIZACIÓN CON SUPABASE
+        // =================================================================
+        syncBtn.addEventListener('click', () => {
+            if (!navigator.onLine) {
+                showMessage("Necesitas conexión a internet para sincronizar.", "error");
+                return;
+            }
+            if (!supabase) {
+                showMessage("Supabase no está configurado. Revisa las claves.", "error");
+                return;
+            }
+            syncOfflineDrafts();
+        });
+
+        async function syncOfflineDrafts() {
+            const drafts = await getOfflineDrafts();
+            if (drafts.length === 0) {
+                if (navigator.onLine) showMessage("No hay borradores pendientes para sincronizar.", "info");
+                return;
+            }
+
+            showMessage(`Sincronizando ${drafts.length} borrador(es)...`, "info");
+            
+            for (const draft of drafts) {
+                try {
+                    const keys = Object.keys(draft.photo_data);
+                    
+                    showMessage(`Subiendo ${keys.length} fotos comprimidas para el reporte ${draft.id}...`, "info");
+
+                    // 1. Subir todas las 5 imágenes en paralelo
+                    const uploadPromises = keys.map(async (key) => {
+                        const photo = draft.photo_data[key];
+                        // Convertir el Base64 (comprimido) de vuelta a un archivo
+                        const file = base64ToFile(photo.base64, photo.name, photo.type);
+                        
+                        // 2. Subir imagen a Supabase Storage
+                        const filePath = `public/${draft.id}/${key}-${file.name}`;
+                        const { data: storageData, error: storageError } = await supabase
+                            .storage
+                            .from('report-photos') // Nombre del Bucket
+                            .upload(filePath, file, {
+                                contentType: file.type, // Añadir tipo de contenido
+                                upsert: true // Sobrescribir si existe
+                            });
+
+                        if (storageError) throw storageError;
+
+                        // 3. Obtener la URL pública de la imagen
+                        const { data: urlData } = supabase
+                            .storage
+                            .from('report-photos')
+                            .getPublicUrl(filePath);
+                        
+                        return { key, url: urlData.publicUrl };
+                    });
+                    
+                    const uploadedPhotos = await Promise.all(uploadPromises);
+                    
+                    // Convertir el array de resultados en un objeto de URLs
+                    // Mapear la clave de la app (ej: 'infrarrojo') a la columna de la DB (ej: 'photo_url_infrarrojo')
+                    const urlsToInsert = {};
+                    for (const photo of uploadedPhotos) {
+                        urlsToInsert[`photo_url_${photo.key}`] = photo.url;
+                    }
+
+                    // Preparar el objeto final para la DB (texto + URLs de fotos)
+                    const dbRecord = {
+                        ...draft.text_data, // fecha, productor_peonia, variedad_peonia, responsable, observacion
+                        ...urlsToInsert   // photo_url_infrarrojo, photo_url_pincho, ...
+                    };
+
+                    // 4. Insertar datos en la tabla de Supabase DB
+                    const { error: dbError } = await supabase
+                        .from('reports') // Nombre de la Tabla
+                        .insert(dbRecord); // Insertar el objeto completo
+                    
+                    if (dbError) throw dbError;
+
+                    // 5. (ÉXITO) Sincronización de datos exitosa
+                    showMessage(`Reporte '${draft.id}' sincronizado.`, "success");
+                    
+                    // 6. Invocar Edge Function para generar el Documento
+                    await generateDocument(dbRecord, draft.id);
+                    
+                    // 7. (ÉXITO TOTAL) Eliminar borrador local
+                    await removeOfflineDraft(draft.id);
+
+                } catch (error) {
+                    console.error('Error sincronizando:', error);
+                    showMessage(`Error al sincronizar '${draft.id}': ${error.message}`, "error");
+                    // No eliminar el borrador si la sincronización (incluyendo la generación del doc) falla
+                }
+            }
+            
+            await updateDraftsList();
+        }
+        
+        // =================================================================
+        // 6. INVOCAR EDGE FUNCTION (Generar Documento)
+        // =================================================================
+        
+        async function generateDocument(dbRecord, draftId) {
+            if (!supabase) return;
+            
+            // --- CAMBIO PARA EL PASO 2 DEL PLAN DE DEPURACIÓN ---
+            // El nombre de la función que desplegamos en el Paso 1
+            const functionName = 'generarReporteHTML';
+            
+            showMessage(`Llamando a la función de prueba '${functionName}'...`, "info");
+            
+            try {
+                // Invocamos la función de prueba
+                // CAMBIO: responseType es 'json' porque el "Hola Mundo" devuelve un mensaje JSON.
+                const { data: responseData, error } = await supabase.functions.invoke(functionName, {
+                    body: dbRecord, // Enviamos los datos (la función de prueba los ignorará)
+                    responseType: 'json' 
+                });
+                
+                if (error) throw error;
+                
+                // 7. (ÉXITO) Si llegamos aquí, la llamada funcionó
+                // responseData debería ser { message: "¡El test 'Hola Mundo' funcionó!" }
+                console.log("Respuesta del Test 'Hola Mundo':", responseData);
+                
+                // Usamos un alert() SOLO para esta prueba, es la forma más
+                // clara de confirmar que el 'net::ERR_FAILED' desapareció.
+                alert("¡PRUEBA EXITOSA! Se recibió respuesta de la función: \n" + responseData.message);
+                
+                showMessage(`Prueba de función '${functionName}' exitosa.`, "success");
+                
+            } catch (error) {
+                console.error(`Error al llamar a la función de prueba '${functionName}':`, error);
+                showMessage(`Error al llamar a la función: ${error.message}`, "error");
+                
+                // Lanzamos el error de nuevo para que syncOfflineDrafts sepa que falló
+                // y no borre el borrador local.
+                throw new Error(`Fallo en la llamada a la Edge Function: ${error.message}`);
+            }
+            // --- FIN DEL CAMBIO PARA EL PASO 2 ---
+        }
+
+        // =================================================================
+        // 7. FUNCIONES DE UTILIDAD (localForage, UI, etc.)
+        // =================================================================
+        
+        async function getOfflineDrafts() {
+            // Usamos localForage en lugar de localStorage
+            const drafts = await localforage.getItem('offlineDrafts');
+            return drafts || [];
+        }
+
+        async function removeOfflineDraft(draftId) {
+            let drafts = await getOfflineDrafts();
+            drafts = drafts.filter(d => d.id !== draftId);
+            await localforage.setItem('offlineDrafts', drafts);
+        }
+
+        async function updateDraftsList() {
+            const drafts = await getOfflineDrafts();
+            draftsList.innerHTML = ''; // Limpiar lista
+            
+            if (drafts.length === 0) {
+                draftsList.appendChild(noDraftsMsg);
+            } else {
+                drafts.forEach(draft => {
+                    const el = document.createElement('div');
+                    el.className = 'p-3 bg-gray-50 border rounded-md mb-2 flex justify-between items-center';
+                    el.innerHTML = `
+                        <span>
+                            <strong>Reporte #${draft.id.split('_')[1]}</strong>
+                            <span class="text-xs text-gray-500"> - ${new Date(draft.created_at).toLocaleString('es-CL')}</span>
+                        </span>
+                        <span class="text-xs font-medium text-yellow-600">Pendiente</span>
+                    `;
+                    draftsList.appendChild(el);
+                });
+            }
+        }
+        
+        function base64ToFile(base64, filename, mimeType) {
+            const arr = base64.split(',');
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new File([u8arr], filename, { type: mimeType });
+        }
+
+        function clearForm() {
+            // Limpiar campos de texto
+            inputs.fecha.value = new Date().toLocaleDateString('es-CL'); // Resetear fecha
+            inputs.productor.value = "";
+            inputs.variedad.value = "";
+            inputs.responsable.value = "";
+            inputs.observacion.value = "";
+            
+            // Limpiar todos los inputs de fotos y vistas previas
+            Object.keys(previews).forEach(key => {
+                inputs[key].value = null;
+                previews[key].classList.add('hidden');
+                previews[key].src = '';
+            });
+            currentFiles = {};
+            currentBase64 = {};
+        }
+
+        function showMessage(message, type = "info") {
+            const colors = {
+                info: "bg-blue-500",
+                success: "bg-green-500",
+                warning: "bg-yellow-500",
+                error: "bg-red-500"
+            };
+            messageBox.className = `p-4 rounded-md mb-4 text-white ${colors[type]}`;
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden');
+
+            // Hacemos que los mensajes de error duren más
+            const duration = (type === 'error' || type === 'warning') ? 6000 : 4000;
+            
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, duration);
+        }
+
+        // =================================================================
+        // 8. INICIALIZACIÓN
+        // =================================================================
+        
+        // Configurar localForage
+        localforage.config({
+            name: 'appReportesPeonias',
+            storeName: 'borradores'
+        });
+
+        // Inicializar la app
+        (async () => {
+            updateOnlineStatus();
+            await updateDraftsList();
+            clearForm(); // Limpiar formulario y poner fecha al cargar
+            
+            if (!supabase) {
+                showMessage("Modo Offline: Supabase no está configurado.", "warning");
+            }
+        })();
+        
+    </script>
+</body>
+</html>
